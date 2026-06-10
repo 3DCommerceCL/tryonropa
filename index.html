@@ -653,7 +653,6 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
   form.append('model',   'dall-e-2');
   form.append('size',    '1024x1024');
   form.append('n',       '1');
-  form.append('response_format', 'b64_json');
 
   const respuesta = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST',
@@ -676,7 +675,7 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
   }
 
   const data = await respuesta.json();
-  return data.data[0].b64_json; // base64 del resultado
+  return data.data[0].url; // URL temporal de la imagen generada
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -724,12 +723,12 @@ btnGenerar.addEventListener('click', async () => {
 
     // 4. Llamar a la API de OpenAI
     mostrarLoader('Generando imagen con IA…');
-    const resultadoB64 = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto);
+    const resultadoUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto);
 
     // 5. Mostrar resultados
     ocultarLoader();
     resultOrig.src = URL.createObjectURL(imagenBlob);
-    resultGen.src  = `data:image/png;base64,${resultadoB64}`;
+    resultGen.src  = resultadoUrl;
     seccionRes.classList.add('visible');
     mostrarExito('¡Listo! Tu try-on virtual fue generado correctamente.');
 
