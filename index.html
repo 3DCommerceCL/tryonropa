@@ -405,7 +405,7 @@
   <!-- ── Encabezado ── -->
   <header>
     <h1>👕 Virtual Try-On</h1>
-    <p>Pruébate una polera virtualmente con IA generativa</p>
+    <p>Pruébate una polera virtualmente</p>
   </header>
 
   <!-- ── Sección 1: API Key ── -->
@@ -773,17 +773,18 @@ function ocultarLoader() {
    Le dan vida a la pantalla de carga, que en gpt-image-1 con
    quality "high" puede tardar 20-40 segundos. */
 const MENSAJES_CARGA_IA = [
-  'Generando tu try-on…',
-  'Haciendo nuestra magia ✨',
+  'Preparando tu try-on…',
   'Cosiendo la nueva polera…',
   'Calentando las agujas digitales 🧵',
   'Combinando diseño y estilo…',
+  'Ajustando los detalles del estampado…',
+  'Probándote la polera virtualmente…',
   'Casi listo, un poco más de paciencia…',
-  'La IA está midiendo bien la talla…',
+  'Midiendo bien la talla…',
   'Aplicando los últimos retoques…',
 ];
 
-function iniciarMensajesRotativos(intervaloMs = 2500) {
+function iniciarMensajesRotativos(intervaloMs = 5000) {
   let i = 0;
   loaderTexto.textContent = MENSAJES_CARGA_IA[0];
   return setInterval(() => {
