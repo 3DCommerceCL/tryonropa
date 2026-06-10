@@ -183,6 +183,49 @@
       cursor: not-allowed;
     }
 
+    /* ── Selector de tipo de Try-On (Normal / Pro) ── */
+    .tryon-opciones {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .tryon-opcion {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+    }
+    .tryon-opcion:has(input:checked) {
+      border-color: var(--accent);
+      background: #f0f7ff;
+    }
+    .tryon-opcion input[type="radio"] {
+      margin-top: 4px;
+      width: auto;
+    }
+    .tryon-opcion strong { font-size: 0.95rem; }
+    .tryon-opcion p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .contador-pro {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .contador-pro.agotado { color: var(--error); }
+    .tryon-opcion.deshabilitada {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     /* ── Estado de carga ── */
     .loader {
       display: none;
@@ -335,6 +378,37 @@
     </label>
   </div>
 
+  <!-- ── Sección 3: Tipo de Try-On ── -->
+  <div class="card">
+    <h2>Tipo de Try-On</h2>
+    <div class="tryon-opciones">
+      <label class="tryon-opcion">
+        <input type="radio" name="tipoTryon" value="normal" id="tryonNormal" checked />
+        <div>
+          <strong>Try-On Normal</strong>
+          <p>Calidad estándar, ideal para una vista rápida del resultado. <strong>Ilimitado</strong>.</p>
+        </div>
+      </label>
+      <label class="tryon-opcion">
+        <input type="radio" name="tipoTryon" value="pro" id="tryonPro" />
+        <div>
+          <strong>Try-On Pro ✨</strong>
+          <p>Mayor nitidez: recomendado para poleras con textos o diseños pequeños/detallados.</p>
+          <span class="contador-pro" id="contadorPro">3/3 disponibles hoy</span>
+        </div>
+      </label>
+    </div>
+
+    <!-- Permiso de uso en RRSS, solo visible para Try-On Pro -->
+    <label class="field" id="campoPermisoCompartir"
+           style="flex-direction:row;align-items:center;gap:8px;cursor:pointer;display:none;margin-top:14px;">
+      <input type="checkbox" id="permisoCompartir" style="width:auto;" />
+      <span style="font-size:0.875rem;">
+        Autorizo usar mi imagen generada en redes sociales / historias
+      </span>
+    </label>
+  </div>
+
   <!-- ── Botón Generar ── -->
   <button class="btn-primary" id="btnGenerar" disabled>
     <span>✨ Generar Try-On</span>
@@ -396,6 +470,11 @@ const resultGen     = $('resultGenerado');
 const tituloResultado    = $('tituloResultado');
 const labelSegundaImagen = $('labelSegundaImagen');
 const modoDebugMascara   = $('modoDebugMascara');
+const tryonNormalRadio      = $('tryonNormal');
+const tryonProRadio         = $('tryonPro');
+const contadorPro            = $('contadorPro');
+const campoPermisoCompartir = $('campoPermisoCompartir');
+const permisoCompartir      = $('permisoCompartir');
 const canvas        = $('canvasOculto');
 const ctx           = canvas.getContext('2d');
 
@@ -425,6 +504,65 @@ function validarFormulario() {
   const listo = estado.fotoPersona && estado.fotoPolera && !estado.procesando;
   btnGenerar.disabled = !listo;
 }
+
+/* ════════════════════════════════════════════════════════════
+   LÍMITE DIARIO DE TRY-ON PRO
+   ─────────────────────────────────────────────────────────
+   Por ahora, sin cuentas de usuario, el límite se controla con
+   localStorage (3 Try-On Pro por día en este navegador). Esto es
+   solo una maqueta visual: no previene abuso real (el usuario
+   podría borrar localStorage o usar otro navegador). El control
+   real (por cuenta / IP, créditos por compartir o por compras)
+   queda para cuando exista backend.
+   ════════════════════════════════════════════════════════════ */
+const LIMITE_PRO_DIARIO = 3;
+const CLAVE_USO_PRO     = 'tryonProUso';
+
+function obtenerUsoPro() {
+  const hoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  let guardado = null;
+  try { guardado = JSON.parse(localStorage.getItem(CLAVE_USO_PRO)); } catch (_) {}
+  if (!guardado || guardado.fecha !== hoy) {
+    return { fecha: hoy, usados: 0 };
+  }
+  return guardado;
+}
+
+function registrarUsoPro() {
+  const uso = obtenerUsoPro();
+  uso.usados += 1;
+  localStorage.setItem(CLAVE_USO_PRO, JSON.stringify(uso));
+  actualizarContadorPro();
+}
+
+function actualizarContadorPro() {
+  const uso = obtenerUsoPro();
+  const restantes = Math.max(0, LIMITE_PRO_DIARIO - uso.usados);
+  contadorPro.textContent = `${restantes}/${LIMITE_PRO_DIARIO} disponibles hoy`;
+  contadorPro.classList.toggle('agotado', restantes === 0);
+
+  const opcionPro = tryonProRadio.closest('.tryon-opcion');
+  if (restantes === 0) {
+    opcionPro.classList.add('deshabilitada');
+    tryonProRadio.disabled = true;
+    if (tryonProRadio.checked) {
+      tryonNormalRadio.checked = true;
+      campoPermisoCompartir.style.display = 'none';
+    }
+  } else {
+    opcionPro.classList.remove('deshabilitada');
+    tryonProRadio.disabled = false;
+  }
+}
+
+// Mostrar/ocultar el permiso de compartir según el tipo elegido
+[tryonNormalRadio, tryonProRadio].forEach(radio => {
+  radio.addEventListener('change', () => {
+    campoPermisoCompartir.style.display = tryonProRadio.checked ? 'flex' : 'none';
+  });
+});
+
+actualizarContadorPro();
 
 /* ════════════════════════════════════════════════════════════
    UTILIDADES UI
@@ -736,7 +874,7 @@ const PROMPT_OCULTO =
   'and lighting pixel-for-pixel identical to the first image. ' +
   'Do not add any text other than what appears in the second image\'s design.';
 
-async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob) {
+async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob, calidad) {
   const form = new FormData();
   form.append('image[]', new File([imagenBlob], 'persona.png', { type: 'image/png' }));
   form.append('image[]', new File([poleraBlob], 'polera.png',  { type: 'image/png' }));
@@ -745,7 +883,7 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob) {
   form.append('model',   'gpt-image-1');
   form.append('size',    '1024x1024');
   form.append('n',       '1');
-  form.append('quality', 'medium');
+  form.append('quality', calidad); // 'high' (Try-On Pro) o 'medium' (Try-On Normal)
   // input_fidelity 'high' preserva mejor el rostro de la persona y los
   // detalles del diseño de la polera de referencia (menos "reinterpretación")
   form.append('input_fidelity', 'high');
@@ -840,11 +978,16 @@ btnGenerar.addEventListener('click', async () => {
     const poleraBlob = await redimensionarImagen(imgPolera);
 
     // 5. Llamar a la API de OpenAI
+    const esPro  = tryonProRadio.checked;
+    const calidad = esPro ? 'high' : 'medium';
     mostrarLoader(MENSAJES_CARGA_IA[0]);
     intervaloMensajes = iniciarMensajesRotativos();
-    const resultadoDataUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob);
+    const resultadoDataUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob, calidad);
     clearInterval(intervaloMensajes);
     intervaloMensajes = null;
+
+    // Si fue Try-On Pro, descontar del límite diario
+    if (esPro) registrarUsoPro();
 
     // 6. Mostrar resultados
     ocultarLoader();
@@ -853,7 +996,14 @@ btnGenerar.addEventListener('click', async () => {
     resultOrig.src = URL.createObjectURL(imagenBlob);
     resultGen.src  = resultadoDataUrl;
     seccionRes.classList.add('visible');
-    mostrarExito('¡Listo! Tu try-on virtual fue generado correctamente.');
+
+    let textoExito = esPro
+      ? '¡Listo! Tu Try-On Pro fue generado correctamente.'
+      : '¡Listo! Tu Try-On fue generado correctamente.';
+    if (esPro && permisoCompartir.checked) {
+      textoExito += ' Gracias por autorizar compartir tu imagen en RRSS/historias.';
+    }
+    mostrarExito(textoExito);
 
   } catch (err) {
     // Nunca logueamos la API key, pero sí el mensaje de error
