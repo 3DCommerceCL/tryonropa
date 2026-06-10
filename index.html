@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Virtual Try-On de Poleras</title>
+
+  <!-- MediaPipe Pose (solo este modelo para evitar conflictos WASM) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+
+  <style>
+    /* ── Reset y variables ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --accent: #0071e3;
+      --accent-hover: #0058b0;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --border: #d2d2d7;
+      --error: #ff3b30;
+      --success: #34c759;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    /* ── Contenedor principal ── */
+    .container {
+      width: 100%;
+      max-width: 700px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── Encabezado ── */
+    header {
+      text-align: center;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    /* ── Tarjeta genérica ── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Campos de formulario ── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field label {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .field input[type="password"],
+    .field input[type="text"],
+    .field textarea {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+      background: #fafafa;
+      color: var(--text);
+      font-family: inherit;
+    }
+    .field input:focus,
+    .field textarea:focus {
+      border-color: var(--accent);
+      background: #fff;
+    }
+    .field textarea {
+      resize: vertical;
+      min-height: 72px;
+    }
+
+    /* ── Upload de imagen ── */
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+    .upload-area:hover {
+      border-color: var(--accent);
+      background: #f0f7ff;
+    }
+    .upload-area input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-area .icon { font-size: 2rem; }
+    .upload-area .label {
+      margin-top: 6px;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .upload-area .label strong { color: var(--accent); }
+    .upload-preview {
+      margin-top: 10px;
+      display: none;
+    }
+    .upload-preview img {
+      max-height: 200px;
+      max-width: 100%;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+
+    /* ── Dos columnas para las dos imágenes ── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* ── Botón principal ── */
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+
+    /* ── Estado de carga ── */
+    .loader {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 0;
+    }
+    .loader.visible { display: flex; }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-size: 0.9rem; color: var(--muted); }
+
+    /* ── Mensajes de error/éxito ── */
+    .message {
+      display: none;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .message.error {
+      background: #fff2f1;
+      color: var(--error);
+      border: 1px solid #ffd4d1;
+      display: block;
+    }
+    .message.success {
+      background: #f0fff4;
+      color: var(--success);
+      border: 1px solid #b7f0c8;
+      display: block;
+    }
+
+    /* ── Resultados ── */
+    .results {
+      display: none;
+    }
+    .results.visible { display: block; }
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .result-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    .result-item .result-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .result-item img {
+      width: 100%;
+      border-radius: 10px;
+      object-fit: contain;
+      box-shadow: var(--shadow);
+    }
+
+    /* ── Debug canvas oculto ── */
+    #canvasOculto { display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 500px) {
+      .two-col { grid-template-columns: 1fr; }
+      .result-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ── Encabezado ── -->
+  <header>
+    <h1>👕 Virtual Try-On</h1>
+    <p>Pruébate una polera virtualmente con IA generativa</p>
+  </header>
+
+  <!-- ── Sección 1: API Key ── -->
+  <div class="card">
+    <h2>Configuración</h2>
+    <div class="field">
+      <label for="apiKey">OpenAI API Key</label>
+      <input
+        type="password"
+        id="apiKey"
+        placeholder="sk-..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span style="font-size:0.78rem;color:var(--muted);">
+        Tu clave se usa solo en este navegador y nunca se envía a ningún servidor propio.
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Sección 2: Imágenes ── -->
+  <div class="card">
+    <h2>Imágenes</h2>
+    <div class="two-col">
+
+      <!-- Foto persona -->
+      <div class="field">
+        <label>Tu foto</label>
+        <div class="upload-area" id="areaPersona">
+          <input type="file" id="inputPersona" accept="image/jpeg,image/png" />
+          <div class="icon">🧍</div>
+          <div class="label">Haz clic o arrastra<br/><strong>JPG / PNG</strong></div>
+        </div>
+        <div class="upload-preview" id="prevPersona">
+          <img id="imgPersona" alt="Vista previa persona" />
+        </div>
+      </div>
+
+      <!-- Foto polera -->
+      <div class="field">
+        <label>Foto de la polera</label>
+        <div class="upload-area" id="areaPolera">
+          <input type="file" id="inputPolera" accept="image/jpeg,image/png" />
+          <div class="icon">👕</div>
+          <div class="label">Haz clic o arrastra<br/><strong>JPG / PNG</strong></div>
+        </div>
+        <div class="upload-preview" id="prevPolera">
+          <img id="imgPolera" alt="Vista previa polera" />
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Prompt editable -->
+    <div class="field">
+      <label for="prompt">Descripción para la IA (editable)</label>
+      <textarea
+        id="prompt"
+        placeholder="Ej: A person wearing a white t-shirt with a colorful abstract print design on the chest"
+      ></textarea>
+      <span style="font-size:0.78rem;color:var(--muted);">
+        Se genera automáticamente desde el nombre del archivo de la polera, pero puedes editarlo.
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Botón Generar ── -->
+  <button class="btn-primary" id="btnGenerar" disabled>
+    <span>✨ Generar Try-On</span>
+  </button>
+
+  <!-- ── Estado de carga ── -->
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <div class="loader-text" id="loaderTexto">Iniciando…</div>
+  </div>
+
+  <!-- ── Mensajes ── -->
+  <div class="message" id="mensaje"></div>
+
+  <!-- ── Resultados ── -->
+  <div class="card results" id="seccionResultados">
+    <h2>Resultado</h2>
+    <div class="result-grid">
+      <div class="result-item">
+        <span class="result-label">Original</span>
+        <img id="resultOriginal" alt="Foto original" />
+      </div>
+      <div class="result-item">
+        <span class="result-label">Con polera</span>
+        <img id="resultGenerado" alt="Imagen generada" />
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Canvas oculto para procesamiento de máscara -->
+<canvas id="canvasOculto"></canvas>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   ESTADO GLOBAL
+   ════════════════════════════════════════════════════════════ */
+const estado = {
+  fotoPersona: null,   // File original
+  fotoPolera: null,    // File original
+  procesando: false,
+};
+
+/* ════════════════════════════════════════════════════════════
+   REFERENCIAS AL DOM
+   ════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const apiKeyInput   = $('apiKey');
+const inputPersona  = $('inputPersona');
+const inputPolera   = $('inputPolera');
+const promptInput   = $('prompt');
+const btnGenerar    = $('btnGenerar');
+const loader        = $('loader');
+const loaderTexto   = $('loaderTexto');
+const mensaje       = $('mensaje');
+const seccionRes    = $('seccionResultados');
+const resultOrig    = $('resultOriginal');
+const resultGen     = $('resultGenerado');
+const canvas        = $('canvasOculto');
+const ctx           = canvas.getContext('2d');
+
+/* ════════════════════════════════════════════════════════════
+   MANEJO DE UPLOADS
+   ════════════════════════════════════════════════════════════ */
+
+// Muestra preview cuando el usuario selecciona una imagen
+function manejarUpload(input, previewContainer, previewImg, estadoKey) {
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    estado[estadoKey] = file;
+
+    // Generar prompt automático desde el nombre del archivo de la polera
+    if (estadoKey === 'fotoPolera') {
+      const nombre = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+      promptInput.value = `A person wearing a t-shirt with ${nombre} design`;
+    }
+
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewContainer.style.display = 'block';
+    validarFormulario();
+  });
+}
+
+manejarUpload(inputPersona, $('prevPersona'), $('imgPersona'), 'fotoPersona');
+manejarUpload(inputPolera,  $('prevPolera'),  $('imgPolera'),  'fotoPolera');
+
+// Activa el botón solo cuando todo está listo
+function validarFormulario() {
+  const listo = estado.fotoPersona && estado.fotoPolera && !estado.procesando;
+  btnGenerar.disabled = !listo;
+}
+
+/* ════════════════════════════════════════════════════════════
+   UTILIDADES UI
+   ════════════════════════════════════════════════════════════ */
+
+function mostrarLoader(texto) {
+  loader.classList.add('visible');
+  loaderTexto.textContent = texto;
+  mensaje.className = 'message';
+  mensaje.textContent = '';
+}
+
+function ocultarLoader() {
+  loader.classList.remove('visible');
+}
+
+function mostrarError(texto) {
+  ocultarLoader();
+  mensaje.className = 'message error';
+  mensaje.textContent = texto;
+}
+
+function mostrarExito(texto) {
+  mensaje.className = 'message success';
+  mensaje.textContent = texto;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 1: Cargar imagen en un HTMLImageElement
+   ════════════════════════════════════════════════════════════ */
+
+function cargarImagen(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 2: Redimensionar imagen a 1024×1024 en el canvas
+            Retorna un Blob PNG
+   ════════════════════════════════════════════════════════════ */
+
+function redimensionarImagen(img) {
+  return new Promise(resolve => {
+    canvas.width  = 1024;
+    canvas.height = 1024;
+    // Relleno negro de fondo para mantener ratio sin distorsión
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    // Calcular escala manteniendo proporción (letterbox)
+    const escala = Math.min(1024 / img.naturalWidth, 1024 / img.naturalHeight);
+    const w = img.naturalWidth  * escala;
+    const h = img.naturalHeight * escala;
+    const x = (1024 - w) / 2;
+    const y = (1024 - h) / 2;
+
+    ctx.drawImage(img, x, y, w, h);
+    canvas.toBlob(resolve, 'image/png');
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 3: Generación de máscara con MediaPipe Pose
+   ─────────────────────────────────────────────────────────
+   Solo usamos Pose (un único modelo WASM) para evitar el
+   conflicto que ocurría al cargar SelfieSegmentation + Pose
+   simultáneamente (error Module.arguments).
+
+   La máscara se construye como un polígono suave que une los
+   4 landmarks del torso: hombros (11,12) y caderas (23,24).
+   BLANCO = zona a editar (torso), NEGRO = mantener.
+   ════════════════════════════════════════════════════════════ */
+
+function generarMascara(img) {
+  return new Promise((resolve, reject) => {
+
+    const maskCanvas  = document.createElement('canvas');
+    maskCanvas.width  = 1024;
+    maskCanvas.height = 1024;
+    const maskCtx     = maskCanvas.getContext('2d');
+
+    // Canvas fuente 1024×1024 para enviar a MediaPipe
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = srcCanvas.height = 1024;
+    const srcCtx    = srcCanvas.getContext('2d');
+    srcCtx.fillStyle = '#000';
+    srcCtx.fillRect(0, 0, 1024, 1024);
+    const escala = Math.min(1024 / img.naturalWidth, 1024 / img.naturalHeight);
+    const w  = img.naturalWidth  * escala;
+    const h  = img.naturalHeight * escala;
+    const ox = (1024 - w) / 2;
+    const oy = (1024 - h) / 2;
+    srcCtx.drawImage(img, ox, oy, w, h);
+
+    let terminado = false;
+
+    // ── Inicializar solo Pose (versión pinned para estabilidad) ──
+    const pose = new Pose({
+      locateFile: f =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`
+    });
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: false,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+
+    pose.onResults(results => {
+      if (terminado) return;
+      terminado = true;
+
+      const lm = results.poseLandmarks;
+      if (!lm || lm.length === 0) {
+        reject(new Error(
+          'MediaPipe no detectó una persona en la foto. ' +
+          'Intenta con una foto donde el cuerpo sea claramente visible.'
+        ));
+        return;
+      }
+
+      /* ── Landmarks clave del torso ──
+           11 hombro izq · 12 hombro der
+           23 cadera izq  · 24 cadera der
+         Si las caderas no son visibles (foto de busto),
+         las estimamos 60% de la altura del torso más abajo.  */
+      const hIzq = lm[11];
+      const hDer = lm[12];
+      const cIzq = lm[23];
+      const cDer = lm[24];
+
+      if (!hIzq || !hDer || (hIzq.visibility || 0) < 0.3 || (hDer.visibility || 0) < 0.3) {
+        reject(new Error(
+          'No se detectaron los hombros. ' +
+          'Asegúrate de que los hombros sean visibles en la foto.'
+        ));
+        return;
+      }
+
+      // Convertir a píxeles
+      const p = lm => ({ x: lm.x * 1024, y: lm.y * 1024 });
+      const A = p(hIzq);
+      const B = p(hDer);
+
+      // Si las caderas no son detectables, estimarlas
+      const alturaHombros = Math.abs(B.y - A.y);
+      const anchoHombros  = Math.abs(B.x - A.x);
+      const estCaderaY    = A.y + anchoHombros * 0.9;
+
+      const C = (cIzq && (cIzq.visibility || 0) > 0.3)
+        ? p(cIzq)
+        : { x: A.x, y: estCaderaY };
+      const D = (cDer && (cDer.visibility || 0) > 0.3)
+        ? p(cDer)
+        : { x: B.x, y: estCaderaY };
+
+      // ── Expandir el polígono para cubrir la polera completa ──
+      const padX    = anchoHombros * 0.14;
+      const padArriba = 18;   // px hacia arriba (zona del cuello)
+      const padAbajo  = (D.y - A.y) * 0.06;
+
+      const poly = [
+        { x: A.x - padX,  y: A.y - padArriba },   // hombro izq
+        { x: B.x + padX,  y: B.y - padArriba },   // hombro der
+        { x: D.x + padX,  y: D.y + padAbajo   },   // cadera der
+        { x: C.x - padX,  y: C.y + padAbajo   },   // cadera izq
+      ].map(pt => ({                                 // clamp a canvas
+        x: Math.max(0, Math.min(1024, pt.x)),
+        y: Math.max(0, Math.min(1024, pt.y)),
+      }));
+
+      // ── Dibujar máscara: fondo negro + polígono blanco suavizado ──
+      maskCtx.fillStyle = '#000';
+      maskCtx.fillRect(0, 0, 1024, 1024);
+
+      // Suavizar bordes con blur para mejor fusión con DALL-E
+      maskCtx.filter = 'blur(18px)';
+      maskCtx.fillStyle = '#fff';
+      maskCtx.beginPath();
+      maskCtx.moveTo(poly[0].x, poly[0].y);
+      for (let i = 1; i < poly.length; i++) {
+        maskCtx.lineTo(poly[i].x, poly[i].y);
+      }
+      maskCtx.closePath();
+      maskCtx.fill();
+      maskCtx.filter = 'none';
+
+      maskCanvas.toBlob(blob => resolve(blob), 'image/png');
+    });
+
+    pose.send({ image: srcCanvas })
+      .catch(err => reject(new Error('Error en MediaPipe Pose: ' + err.message)));
+
+    // Timeout de seguridad: 25 segundos
+    setTimeout(() => {
+      if (!terminado) {
+        terminado = true;
+        reject(new Error('MediaPipe tardó demasiado. Intenta con una imagen más pequeña.'));
+      }
+    }, 25000);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 4: Llamar a OpenAI images/edits
+   ════════════════════════════════════════════════════════════ */
+
+async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
+  const form = new FormData();
+  form.append('image',   new File([imagenBlob],  'persona.png',  { type: 'image/png' }));
+  form.append('mask',    new File([mascaraBlob],  'mascara.png',  { type: 'image/png' }));
+  form.append('prompt',  promptTexto);
+  form.append('model',   'dall-e-2');
+  form.append('size',    '1024x1024');
+  form.append('n',       '1');
+  form.append('response_format', 'b64_json');
+
+  const respuesta = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: {
+      // No incluir Content-Type: el browser lo pone automáticamente con boundary
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: form,
+  });
+
+  if (!respuesta.ok) {
+    let detalles = '';
+    try {
+      const json = await respuesta.json();
+      detalles = json?.error?.message || JSON.stringify(json);
+    } catch (_) {
+      detalles = await respuesta.text();
+    }
+    throw new Error(`OpenAI API error (${respuesta.status}): ${detalles}`);
+  }
+
+  const data = await respuesta.json();
+  return data.data[0].b64_json; // base64 del resultado
+}
+
+/* ════════════════════════════════════════════════════════════
+   FLUJO PRINCIPAL al hacer clic en "Generar"
+   ════════════════════════════════════════════════════════════ */
+
+btnGenerar.addEventListener('click', async () => {
+  // ── Validaciones previas ──
+  const apiKey = apiKeyInput.value.trim();
+  if (!apiKey) {
+    mostrarError('Ingresa tu OpenAI API Key antes de continuar.');
+    return;
+  }
+  if (!apiKey.startsWith('sk-')) {
+    mostrarError('La API Key parece incorrecta (debe comenzar con "sk-").');
+    return;
+  }
+  if (!estado.fotoPersona || !estado.fotoPolera) {
+    mostrarError('Sube ambas imágenes primero.');
+    return;
+  }
+  const promptTexto = promptInput.value.trim();
+  if (!promptTexto) {
+    mostrarError('Escribe una descripción para la polera.');
+    return;
+  }
+
+  // ── Iniciar procesamiento ──
+  estado.procesando = true;
+  btnGenerar.disabled = true;
+  seccionRes.classList.remove('visible');
+
+  try {
+    // 1. Cargar imagen de la persona
+    mostrarLoader('Cargando imagen…');
+    const imgPersona = await cargarImagen(estado.fotoPersona);
+
+    // 2. Redimensionar imagen a 1024×1024
+    mostrarLoader('Redimensionando imagen a 1024×1024…');
+    const imagenBlob = await redimensionarImagen(imgPersona);
+
+    // 3. Generar máscara con MediaPipe
+    mostrarLoader('Detectando torso con MediaPipe (puede tomar ~5 segundos)…');
+    const mascaraBlob = await generarMascara(imgPersona);
+
+    // 4. Llamar a la API de OpenAI
+    mostrarLoader('Generando imagen con IA…');
+    const resultadoB64 = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto);
+
+    // 5. Mostrar resultados
+    ocultarLoader();
+    resultOrig.src = URL.createObjectURL(imagenBlob);
+    resultGen.src  = `data:image/png;base64,${resultadoB64}`;
+    seccionRes.classList.add('visible');
+    mostrarExito('¡Listo! Tu try-on virtual fue generado correctamente.');
+
+  } catch (err) {
+    // Nunca logueamos la API key, pero sí el mensaje de error
+    console.error('[TryOn Error]', err.message);
+    mostrarError(err.message || 'Ocurrió un error inesperado.');
+  } finally {
+    estado.procesando = false;
+    validarFormulario();
+  }
+});
+</script>
+
+</body>
+</html>
