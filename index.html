@@ -605,16 +605,33 @@ function generarMascara(img) {
         ? p(cDer)
         : { x: B.x, y: estCaderaY };
 
-      // ── Expandir el polígono para cubrir la polera completa ──
-      const padX    = anchoHombros * 0.14;
-      const padArriba = 18;   // px hacia arriba (zona del cuello)
-      const padAbajo  = (D.y - A.y) * 0.06;
+      // ── Calcular el área del torso (bounding box) ──
+      // Incluimos los codos (13,14) si son visibles, para cubrir
+      // mangas en poses en ángulo (selfies, brazos levantados, etc.)
+      const codoIzq = lm[13];
+      const codoDer = lm[14];
+      const puntosTorso = [A, B, C, D];
+      if (codoIzq && (codoIzq.visibility || 0) > 0.3) puntosTorso.push(p(codoIzq));
+      if (codoDer && (codoDer.visibility || 0) > 0.3) puntosTorso.push(p(codoDer));
+
+      const xMinT = Math.min(...puntosTorso.map(pt => pt.x));
+      const xMaxT = Math.max(...puntosTorso.map(pt => pt.x));
+      const yMinT = Math.min(A.y, B.y);
+      const yMaxT = Math.max(C.y, D.y);
+
+      const anchoTorso = xMaxT - xMinT;
+      const altoTorso  = yMaxT - yMinT;
+
+      // ── Expandir generosamente para cubrir hombros, mangas y bajo de la polera ──
+      const padX      = anchoTorso * 0.25;
+      const padArriba = altoTorso  * 0.20 + 15; // incluye zona del cuello/collar
+      const padAbajo  = altoTorso  * 0.20;
 
       const poly = [
-        { x: A.x - padX,  y: A.y - padArriba },   // hombro izq
-        { x: B.x + padX,  y: B.y - padArriba },   // hombro der
-        { x: D.x + padX,  y: D.y + padAbajo   },   // cadera der
-        { x: C.x - padX,  y: C.y + padAbajo   },   // cadera izq
+        { x: xMinT - padX, y: yMinT - padArriba },
+        { x: xMaxT + padX, y: yMinT - padArriba },
+        { x: xMaxT + padX, y: yMaxT + padAbajo  },
+        { x: xMinT - padX, y: yMaxT + padAbajo  },
       ].map(pt => ({                                 // clamp a canvas
         x: Math.max(0, Math.min(1024, pt.x)),
         y: Math.max(0, Math.min(1024, pt.y)),
