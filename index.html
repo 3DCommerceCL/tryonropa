@@ -605,7 +605,7 @@ function generarMascara(img) {
 
       // ── Expandir generosamente para cubrir hombros, mangas y bajo de la polera ──
       const padX      = anchoTorso * 0.25;
-      const padArriba = altoTorso  * 0.20 + 15; // incluye zona del cuello/collar
+      const padArriba = altoTorso  * 0.10 + 10; // cuello/collar, sin invadir el rostro
       const padAbajo  = altoTorso  * 0.20;
 
       const poly = [
@@ -706,10 +706,12 @@ const PROMPT_OCULTO =
   'a t-shirt with a specific design, logo or print. Replace the clothing in ' +
   'the masked region of the first image with a t-shirt that has the exact ' +
   'same design, logo, print and colors as the t-shirt shown in the second ' +
-  'image, fitted naturally to the person\'s pose and body. Preserve the ' +
-  'person\'s face, body, pose, background and lighting exactly as in the ' +
-  'first image. Do not add any text other than what appears in the second ' +
-  'image\'s design.';
+  'image, reproduced as accurately and sharply as possible, fitted naturally ' +
+  'to the person\'s pose and body. ' +
+  'Do not modify anything outside the masked region: keep the person\'s face, ' +
+  'facial expression, identity, skin tone, hairstyle, body, pose, background ' +
+  'and lighting pixel-for-pixel identical to the first image. ' +
+  'Do not add any text other than what appears in the second image\'s design.';
 
 async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob) {
   const form = new FormData();
@@ -720,6 +722,10 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob) {
   form.append('model',   'gpt-image-1');
   form.append('size',    '1024x1024');
   form.append('n',       '1');
+  form.append('quality', 'high');
+  // input_fidelity 'high' preserva mejor el rostro de la persona y los
+  // detalles del diseño de la polera de referencia (menos "reinterpretación")
+  form.append('input_fidelity', 'high');
 
   const respuesta = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST',
