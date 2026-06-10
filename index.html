@@ -337,6 +337,14 @@
         Se genera automáticamente desde el nombre del archivo de la polera, pero puedes editarlo.
       </span>
     </div>
+
+    <!-- Toggle de modo debug: solo genera y muestra la máscara, sin llamar a OpenAI -->
+    <label class="field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer;">
+      <input type="checkbox" id="modoDebugMascara" style="width:auto;" />
+      <span style="font-size:0.875rem;">
+        Modo debug: solo generar y previsualizar la máscara (no llama a la API de OpenAI)
+      </span>
+    </label>
   </div>
 
   <!-- ── Botón Generar ── -->
@@ -355,14 +363,14 @@
 
   <!-- ── Resultados ── -->
   <div class="card results" id="seccionResultados">
-    <h2>Resultado</h2>
+    <h2 id="tituloResultado">Resultado</h2>
     <div class="result-grid">
       <div class="result-item">
         <span class="result-label">Original</span>
         <img id="resultOriginal" alt="Foto original" />
       </div>
       <div class="result-item">
-        <span class="result-label">Con polera</span>
+        <span class="result-label" id="labelSegundaImagen">Con polera</span>
         <img id="resultGenerado" alt="Imagen generada" />
       </div>
     </div>
@@ -398,6 +406,9 @@ const mensaje       = $('mensaje');
 const seccionRes    = $('seccionResultados');
 const resultOrig    = $('resultOriginal');
 const resultGen     = $('resultGenerado');
+const tituloResultado    = $('tituloResultado');
+const labelSegundaImagen = $('labelSegundaImagen');
+const modoDebugMascara   = $('modoDebugMascara');
 const canvas        = $('canvasOculto');
 const ctx           = canvas.getContext('2d');
 
@@ -609,11 +620,18 @@ function generarMascara(img) {
         y: Math.max(0, Math.min(1024, pt.y)),
       }));
 
-      // ── Dibujar máscara: fondo negro + polígono blanco suavizado ──
+      /* ── Dibujar máscara ──
+         La API de OpenAI usa el canal ALPHA: las zonas TRANSPARENTES
+         (alpha = 0) son las que se editan; las zonas OPACAS se
+         mantienen intactas. El color RGB no importa.
+         1) Pintamos todo opaco (se mantiene).
+         2) "Recortamos" (destination-out) el polígono del torso,
+            dejando esa zona transparente = editar. */
+      maskCtx.globalCompositeOperation = 'source-over';
       maskCtx.fillStyle = '#000';
       maskCtx.fillRect(0, 0, 1024, 1024);
 
-      // Suavizar bordes con blur para mejor fusión con DALL-E
+      maskCtx.globalCompositeOperation = 'destination-out';
       maskCtx.filter = 'blur(18px)';
       maskCtx.fillStyle = '#fff';
       maskCtx.beginPath();
@@ -624,6 +642,7 @@ function generarMascara(img) {
       maskCtx.closePath();
       maskCtx.fill();
       maskCtx.filter = 'none';
+      maskCtx.globalCompositeOperation = 'source-over';
 
       maskCanvas.toBlob(blob => resolve(blob), 'image/png');
     });
@@ -650,7 +669,7 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
   form.append('image',   new File([imagenBlob],  'persona.png',  { type: 'image/png' }));
   form.append('mask',    new File([mascaraBlob],  'mascara.png',  { type: 'image/png' }));
   form.append('prompt',  promptTexto);
-  form.append('model',   'dall-e-2');
+  form.append('model',   'gpt-image-1');
   form.append('size',    '1024x1024');
   form.append('n',       '1');
 
@@ -675,7 +694,8 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
   }
 
   const data = await respuesta.json();
-  return data.data[0].url; // URL temporal de la imagen generada
+  // gpt-image-1 siempre devuelve la imagen en base64 (no hay campo "url")
+  return `data:image/png;base64,${data.data[0].b64_json}`;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -683,22 +703,26 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
    ════════════════════════════════════════════════════════════ */
 
 btnGenerar.addEventListener('click', async () => {
+  const debug = modoDebugMascara.checked;
+
   // ── Validaciones previas ──
   const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
-    mostrarError('Ingresa tu OpenAI API Key antes de continuar.');
-    return;
-  }
-  if (!apiKey.startsWith('sk-')) {
-    mostrarError('La API Key parece incorrecta (debe comenzar con "sk-").');
-    return;
+  if (!debug) {
+    if (!apiKey) {
+      mostrarError('Ingresa tu OpenAI API Key antes de continuar.');
+      return;
+    }
+    if (!apiKey.startsWith('sk-')) {
+      mostrarError('La API Key parece incorrecta (debe comenzar con "sk-").');
+      return;
+    }
   }
   if (!estado.fotoPersona || !estado.fotoPolera) {
     mostrarError('Sube ambas imágenes primero.');
     return;
   }
   const promptTexto = promptInput.value.trim();
-  if (!promptTexto) {
+  if (!debug && !promptTexto) {
     mostrarError('Escribe una descripción para la polera.');
     return;
   }
@@ -721,14 +745,31 @@ btnGenerar.addEventListener('click', async () => {
     mostrarLoader('Detectando torso con MediaPipe (puede tomar ~5 segundos)…');
     const mascaraBlob = await generarMascara(imgPersona);
 
+    if (debug) {
+      // Modo debug: mostrar la máscara generada sin llamar a OpenAI
+      ocultarLoader();
+      tituloResultado.textContent = 'Vista previa de la máscara (debug)';
+      labelSegundaImagen.textContent = 'Máscara generada';
+      resultOrig.src = URL.createObjectURL(imagenBlob);
+      resultGen.src  = URL.createObjectURL(mascaraBlob);
+      seccionRes.classList.add('visible');
+      mostrarExito(
+        'Máscara generada correctamente. El área transparente (se ve el fondo blanco) ' +
+        'es la zona del torso que se editaría; el área negra se mantiene.'
+      );
+      return;
+    }
+
     // 4. Llamar a la API de OpenAI
     mostrarLoader('Generando imagen con IA…');
-    const resultadoUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto);
+    const resultadoDataUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto);
 
     // 5. Mostrar resultados
     ocultarLoader();
+    tituloResultado.textContent = 'Resultado';
+    labelSegundaImagen.textContent = 'Con polera';
     resultOrig.src = URL.createObjectURL(imagenBlob);
-    resultGen.src  = resultadoUrl;
+    resultGen.src  = resultadoDataUrl;
     seccionRes.classList.add('visible');
     mostrarExito('¡Listo! Tu try-on virtual fue generado correctamente.');
 
