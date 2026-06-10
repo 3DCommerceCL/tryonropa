@@ -326,18 +326,6 @@
 
     </div>
 
-    <!-- Prompt editable -->
-    <div class="field">
-      <label for="prompt">Descripción para la IA (editable)</label>
-      <textarea
-        id="prompt"
-        placeholder="Ej: A person wearing a white t-shirt with a colorful abstract print design on the chest"
-      ></textarea>
-      <span style="font-size:0.78rem;color:var(--muted);">
-        Se genera automáticamente desde el nombre del archivo de la polera, pero puedes editarlo.
-      </span>
-    </div>
-
     <!-- Toggle de modo debug: solo genera y muestra la máscara, sin llamar a OpenAI -->
     <label class="field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer;">
       <input type="checkbox" id="modoDebugMascara" style="width:auto;" />
@@ -398,7 +386,6 @@ const $ = id => document.getElementById(id);
 const apiKeyInput   = $('apiKey');
 const inputPersona  = $('inputPersona');
 const inputPolera   = $('inputPolera');
-const promptInput   = $('prompt');
 const btnGenerar    = $('btnGenerar');
 const loader        = $('loader');
 const loaderTexto   = $('loaderTexto');
@@ -422,12 +409,6 @@ function manejarUpload(input, previewContainer, previewImg, estadoKey) {
     const file = input.files[0];
     if (!file) return;
     estado[estadoKey] = file;
-
-    // Generar prompt automático desde el nombre del archivo de la polera
-    if (estadoKey === 'fotoPolera') {
-      const nombre = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-      promptInput.value = `A person wearing a t-shirt with ${nombre} design`;
-    }
 
     const url = URL.createObjectURL(file);
     previewImg.src = url;
@@ -710,13 +691,32 @@ function generarMascara(img) {
 
 /* ════════════════════════════════════════════════════════════
    PASO 4: Llamar a OpenAI images/edits
+   ─────────────────────────────────────────────────────────
+   gpt-image-1 acepta MÚLTIPLES imágenes de entrada (image[]):
+   la primera es la foto de la persona (a la que se le aplica
+   la máscara) y la segunda es la referencia con el diseño de
+   la polera. El prompt es fijo y oculto al usuario: solo le
+   pedimos a la IA que tome el diseño/estampado de la segunda
+   imagen y lo aplique sobre la zona enmascarada de la primera.
    ════════════════════════════════════════════════════════════ */
 
-async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto) {
+const PROMPT_OCULTO =
+  'You are given two images. The first image shows a person, with a masked ' +
+  '(transparent) region over their torso/chest area. The second image shows ' +
+  'a t-shirt with a specific design, logo or print. Replace the clothing in ' +
+  'the masked region of the first image with a t-shirt that has the exact ' +
+  'same design, logo, print and colors as the t-shirt shown in the second ' +
+  'image, fitted naturally to the person\'s pose and body. Preserve the ' +
+  'person\'s face, body, pose, background and lighting exactly as in the ' +
+  'first image. Do not add any text other than what appears in the second ' +
+  'image\'s design.';
+
+async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob) {
   const form = new FormData();
-  form.append('image',   new File([imagenBlob],  'persona.png',  { type: 'image/png' }));
-  form.append('mask',    new File([mascaraBlob],  'mascara.png',  { type: 'image/png' }));
-  form.append('prompt',  promptTexto);
+  form.append('image[]', new File([imagenBlob], 'persona.png', { type: 'image/png' }));
+  form.append('image[]', new File([poleraBlob], 'polera.png',  { type: 'image/png' }));
+  form.append('mask',    new File([mascaraBlob], 'mascara.png', { type: 'image/png' }));
+  form.append('prompt',  PROMPT_OCULTO);
   form.append('model',   'gpt-image-1');
   form.append('size',    '1024x1024');
   form.append('n',       '1');
@@ -769,11 +769,6 @@ btnGenerar.addEventListener('click', async () => {
     mostrarError('Sube ambas imágenes primero.');
     return;
   }
-  const promptTexto = promptInput.value.trim();
-  if (!debug && !promptTexto) {
-    mostrarError('Escribe una descripción para la polera.');
-    return;
-  }
 
   // ── Iniciar procesamiento ──
   estado.procesando = true;
@@ -808,11 +803,16 @@ btnGenerar.addEventListener('click', async () => {
       return;
     }
 
-    // 4. Llamar a la API de OpenAI
-    mostrarLoader('Generando imagen con IA…');
-    const resultadoDataUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, promptTexto);
+    // 4. Cargar y redimensionar la foto de la polera
+    mostrarLoader('Procesando foto de la polera…');
+    const imgPolera  = await cargarImagen(estado.fotoPolera);
+    const poleraBlob = await redimensionarImagen(imgPolera);
 
-    // 5. Mostrar resultados
+    // 5. Llamar a la API de OpenAI
+    mostrarLoader('Generando imagen con IA…');
+    const resultadoDataUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob);
+
+    // 6. Mostrar resultados
     ocultarLoader();
     tituloResultado.textContent = 'Resultado';
     labelSegundaImagen.textContent = 'Con polera';
