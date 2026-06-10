@@ -644,7 +644,38 @@ function generarMascara(img) {
       maskCtx.filter = 'none';
       maskCtx.globalCompositeOperation = 'source-over';
 
-      maskCanvas.toBlob(blob => resolve(blob), 'image/png');
+      /* ── Canvas de depuración ──
+         Copia de la imagen fuente con los landmarks detectados
+         (puntos rojos) y el polígono del torso (línea verde)
+         dibujados encima, para verificar visualmente la detección. */
+      const debugCanvas = document.createElement('canvas');
+      debugCanvas.width = debugCanvas.height = 1024;
+      const debugCtx = debugCanvas.getContext('2d');
+      debugCtx.drawImage(srcCanvas, 0, 0);
+
+      // Polígono del torso (verde)
+      debugCtx.strokeStyle = '#00ff00';
+      debugCtx.lineWidth = 4;
+      debugCtx.beginPath();
+      debugCtx.moveTo(poly[0].x, poly[0].y);
+      for (let i = 1; i < poly.length; i++) debugCtx.lineTo(poly[i].x, poly[i].y);
+      debugCtx.closePath();
+      debugCtx.stroke();
+
+      // Landmarks crudos (rojo) con etiqueta
+      debugCtx.fillStyle = '#ff0000';
+      debugCtx.font = 'bold 22px sans-serif';
+      [['11 hIzq', A], ['12 hDer', B], ['23 cIzq', C], ['24 cDer', D]].forEach(([label, pt]) => {
+        debugCtx.beginPath();
+        debugCtx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+        debugCtx.fill();
+        debugCtx.fillText(label, pt.x + 12, pt.y - 12);
+      });
+
+      Promise.all([
+        new Promise(res => maskCanvas.toBlob(res, 'image/png')),
+        new Promise(res => debugCanvas.toBlob(res, 'image/png')),
+      ]).then(([mascaraBlob, debugBlob]) => resolve({ mascaraBlob, debugBlob }));
     });
 
     pose.send({ image: srcCanvas })
@@ -743,19 +774,19 @@ btnGenerar.addEventListener('click', async () => {
 
     // 3. Generar máscara con MediaPipe
     mostrarLoader('Detectando torso con MediaPipe (puede tomar ~5 segundos)…');
-    const mascaraBlob = await generarMascara(imgPersona);
+    const { mascaraBlob, debugBlob } = await generarMascara(imgPersona);
 
     if (debug) {
-      // Modo debug: mostrar la máscara generada sin llamar a OpenAI
+      // Modo debug: mostrar landmarks + polígono detectado, sin llamar a OpenAI
       ocultarLoader();
-      tituloResultado.textContent = 'Vista previa de la máscara (debug)';
-      labelSegundaImagen.textContent = 'Máscara generada';
+      tituloResultado.textContent = 'Vista previa de detección (debug)';
+      labelSegundaImagen.textContent = 'Landmarks + polígono detectado';
       resultOrig.src = URL.createObjectURL(imagenBlob);
-      resultGen.src  = URL.createObjectURL(mascaraBlob);
+      resultGen.src  = URL.createObjectURL(debugBlob);
       seccionRes.classList.add('visible');
       mostrarExito(
-        'Máscara generada correctamente. El área transparente (se ve el fondo blanco) ' +
-        'es la zona del torso que se editaría; el área negra se mantiene.'
+        'Puntos rojos = landmarks de MediaPipe (hombros/caderas). ' +
+        'Línea verde = polígono que se usará como zona de edición.'
       );
       return;
     }
