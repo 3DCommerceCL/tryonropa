@@ -226,6 +226,96 @@
       cursor: not-allowed;
     }
 
+    /* ── Botón de "like" sobre la imagen generada ── */
+    .imagen-resultado-wrapper {
+      position: relative;
+      width: 100%;
+    }
+    .imagen-resultado-wrapper img { display: block; }
+    .btn-like {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      font-size: 1.4rem;
+      line-height: 1;
+      color: #9a9a9e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.15s, color 0.15s;
+    }
+    .btn-like:hover { transform: scale(1.08); }
+    .btn-like.activo {
+      color: var(--error);
+      animation: latido 0.35s ease;
+    }
+    @keyframes latido {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.35); }
+      100% { transform: scale(1); }
+    }
+    .likes-global {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    /* ── Comentarios ── */
+    .comentarios {
+      margin-top: 8px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .comentarios h2 { margin: 0; }
+    #listaComentarios {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .comentario-item {
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+    }
+
+    /* ── Popup de compartir en historias ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      max-width: 360px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modal-card h3 { font-size: 1.1rem; }
+    .modal-card p { font-size: 0.9rem; color: var(--muted); }
+
     /* ── Estado de carga ── */
     .loader {
       display: none;
@@ -398,15 +488,6 @@
         </div>
       </label>
     </div>
-
-    <!-- Permiso de uso en RRSS, solo visible para Try-On Pro -->
-    <label class="field" id="campoPermisoCompartir"
-           style="flex-direction:row;align-items:center;gap:8px;cursor:pointer;display:none;margin-top:14px;">
-      <input type="checkbox" id="permisoCompartir" style="width:auto;" />
-      <span style="font-size:0.875rem;">
-        Autorizo usar mi imagen generada en redes sociales / historias
-      </span>
-    </label>
   </div>
 
   <!-- ── Botón Generar ── -->
@@ -425,7 +506,10 @@
 
   <!-- ── Resultados ── -->
   <div class="card results" id="seccionResultados">
-    <h2 id="tituloResultado">Resultado</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <h2 id="tituloResultado" style="margin:0;">Resultado</h2>
+      <span class="likes-global" id="likesGlobal">❤️ <span id="likesGlobalNumero">0</span> me gusta en este sitio</span>
+    </div>
     <div class="result-grid">
       <div class="result-item">
         <span class="result-label">Original</span>
@@ -433,11 +517,39 @@
       </div>
       <div class="result-item">
         <span class="result-label" id="labelSegundaImagen">Con polera</span>
-        <img id="resultGenerado" alt="Imagen generada" />
+        <div class="imagen-resultado-wrapper">
+          <img id="resultGenerado" alt="Imagen generada" />
+          <button class="btn-like" id="btnLike" type="button" aria-label="Me gusta" title="Me gusta">♡</button>
+        </div>
       </div>
+    </div>
+
+    <!-- Comentarios -->
+    <div class="comentarios">
+      <h2>Comentarios</h2>
+      <div class="field">
+        <textarea id="comentarioInput" placeholder="¿Qué te parece este look? Escribe un comentario…"></textarea>
+      </div>
+      <button class="btn-primary" id="btnComentar" type="button">Comentar</button>
+      <div id="listaComentarios"></div>
     </div>
   </div>
 
+</div>
+
+<!-- ── Popup: ¿Compartir en historias? ── -->
+<div class="modal-overlay" id="modalCompartir">
+  <div class="modal-card">
+    <h3>¡Gracias por tu like! ❤️</h3>
+    <p>¿Te gustaría que compartiéramos esta foto en nuestras historias?</p>
+    <label class="field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer;">
+      <input type="checkbox" id="checkCompartirHistorias" style="width:auto;" />
+      <span style="font-size:0.875rem;">
+        Sí, autorizo compartir esta imagen en redes sociales / historias
+      </span>
+    </label>
+    <button class="btn-primary" id="btnCerrarModal" type="button" style="margin-top:16px;">Listo</button>
+  </div>
 </div>
 
 <!-- Canvas oculto para procesamiento de máscara -->
@@ -470,13 +582,21 @@ const resultGen     = $('resultGenerado');
 const tituloResultado    = $('tituloResultado');
 const labelSegundaImagen = $('labelSegundaImagen');
 const modoDebugMascara   = $('modoDebugMascara');
-const tryonNormalRadio      = $('tryonNormal');
-const tryonProRadio         = $('tryonPro');
-const contadorPro            = $('contadorPro');
-const campoPermisoCompartir = $('campoPermisoCompartir');
-const permisoCompartir      = $('permisoCompartir');
+const tryonNormalRadio = $('tryonNormal');
+const tryonProRadio    = $('tryonPro');
+const contadorPro      = $('contadorPro');
 const canvas        = $('canvasOculto');
 const ctx           = canvas.getContext('2d');
+
+// Likes, comentarios y popup de compartir
+const btnLike              = $('btnLike');
+const likesGlobalNumero    = $('likesGlobalNumero');
+const modalCompartir       = $('modalCompartir');
+const checkCompartirHistorias = $('checkCompartirHistorias');
+const btnCerrarModal       = $('btnCerrarModal');
+const comentarioInput      = $('comentarioInput');
+const btnComentar          = $('btnComentar');
+const listaComentarios     = $('listaComentarios');
 
 /* ════════════════════════════════════════════════════════════
    MANEJO DE UPLOADS
@@ -547,7 +667,7 @@ function actualizarContadorPro() {
     tryonProRadio.disabled = true;
     if (tryonProRadio.checked) {
       tryonNormalRadio.checked = true;
-      campoPermisoCompartir.style.display = 'none';
+      tryonNormalRadio.checked = true;
     }
   } else {
     opcionPro.classList.remove('deshabilitada');
@@ -555,14 +675,84 @@ function actualizarContadorPro() {
   }
 }
 
-// Mostrar/ocultar el permiso de compartir según el tipo elegido
-[tryonNormalRadio, tryonProRadio].forEach(radio => {
-  radio.addEventListener('change', () => {
-    campoPermisoCompartir.style.display = tryonProRadio.checked ? 'flex' : 'none';
-  });
+actualizarContadorPro();
+
+/* ════════════════════════════════════════════════════════════
+   LIKES, POPUP "COMPARTIR EN HISTORIAS" Y COMENTARIOS
+   ─────────────────────────────────────────────────────────
+   Sin backend, el contador de likes y los comentarios se
+   guardan en localStorage de este navegador (no son realmente
+   globales entre usuarios, pero sirven como maqueta visual de
+   la funcionalidad social).
+   ════════════════════════════════════════════════════════════ */
+const CLAVE_LIKES       = 'tryonLikesTotal';
+const CLAVE_COMENTARIOS = 'tryonComentarios';
+
+function obtenerLikesTotal() {
+  return parseInt(localStorage.getItem(CLAVE_LIKES) || '0', 10);
+}
+
+function actualizarLikesGlobal() {
+  likesGlobalNumero.textContent = obtenerLikesTotal();
+}
+
+// Estado del like del resultado actual (se resetea con cada nueva generación)
+let likeActivo = false;
+
+function reiniciarLike() {
+  likeActivo = false;
+  btnLike.textContent = '♡';
+  btnLike.classList.remove('activo');
+}
+
+btnLike.addEventListener('click', () => {
+  if (likeActivo) return; // un like por resultado generado
+  likeActivo = true;
+  btnLike.textContent = '♥';
+  btnLike.classList.add('activo');
+
+  const total = obtenerLikesTotal() + 1;
+  localStorage.setItem(CLAVE_LIKES, String(total));
+  actualizarLikesGlobal();
+
+  // Preguntar si autoriza compartir esta foto en historias
+  checkCompartirHistorias.checked = false;
+  modalCompartir.classList.add('visible');
 });
 
-actualizarContadorPro();
+btnCerrarModal.addEventListener('click', () => {
+  modalCompartir.classList.remove('visible');
+});
+
+// ── Comentarios ──
+function obtenerComentarios() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_COMENTARIOS)) || []; }
+  catch (_) { return []; }
+}
+
+function renderComentarios() {
+  const comentarios = obtenerComentarios();
+  listaComentarios.innerHTML = '';
+  comentarios.slice().reverse().forEach(texto => {
+    const div = document.createElement('div');
+    div.className = 'comentario-item';
+    div.textContent = texto;
+    listaComentarios.appendChild(div);
+  });
+}
+
+btnComentar.addEventListener('click', () => {
+  const texto = comentarioInput.value.trim();
+  if (!texto) return;
+  const comentarios = obtenerComentarios();
+  comentarios.push(texto);
+  localStorage.setItem(CLAVE_COMENTARIOS, JSON.stringify(comentarios));
+  comentarioInput.value = '';
+  renderComentarios();
+});
+
+actualizarLikesGlobal();
+renderComentarios();
 
 /* ════════════════════════════════════════════════════════════
    UTILIDADES UI
@@ -964,6 +1154,7 @@ btnGenerar.addEventListener('click', async () => {
       labelSegundaImagen.textContent = 'Landmarks + polígono detectado';
       resultOrig.src = URL.createObjectURL(imagenBlob);
       resultGen.src  = URL.createObjectURL(debugBlob);
+      reiniciarLike();
       seccionRes.classList.add('visible');
       mostrarExito(
         'Puntos rojos = landmarks de MediaPipe (hombros/caderas). ' +
@@ -995,15 +1186,12 @@ btnGenerar.addEventListener('click', async () => {
     labelSegundaImagen.textContent = 'Con polera';
     resultOrig.src = URL.createObjectURL(imagenBlob);
     resultGen.src  = resultadoDataUrl;
+    reiniciarLike();
     seccionRes.classList.add('visible');
 
-    let textoExito = esPro
+    mostrarExito(esPro
       ? '¡Listo! Tu Try-On Pro fue generado correctamente.'
-      : '¡Listo! Tu Try-On fue generado correctamente.';
-    if (esPro && permisoCompartir.checked) {
-      textoExito += ' Gracias por autorizar compartir tu imagen en RRSS/historias.';
-    }
-    mostrarExito(textoExito);
+      : '¡Listo! Tu Try-On fue generado correctamente.');
 
   } catch (err) {
     // Nunca logueamos la API key, pero sí el mensaje de error
