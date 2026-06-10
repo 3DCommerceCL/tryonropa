@@ -442,6 +442,10 @@
         <div class="upload-preview" id="prevPersona">
           <img id="imgPersona" alt="Vista previa persona" />
         </div>
+        <span style="font-size:0.78rem;color:var(--muted);">
+          Para un mejor Try-On: sube una foto de cuerpo completo o medio cuerpo, de una sola persona,
+          de frente y sin cubrir el torso con manos, cabello u otros objetos.
+        </span>
       </div>
 
       <!-- Foto polera -->
@@ -602,11 +606,23 @@ const listaComentarios     = $('listaComentarios');
    MANEJO DE UPLOADS
    ════════════════════════════════════════════════════════════ */
 
+// Tamaño máximo de archivo aceptado en la subida (la imagen se
+// redimensiona y comprime después, así que esto solo evita casos
+// extremos que tarden mucho en decodificar en el navegador).
+const TAMANO_MAXIMO_MB = 20;
+
 // Muestra preview cuando el usuario selecciona una imagen
 function manejarUpload(input, previewContainer, previewImg, estadoKey) {
   input.addEventListener('change', () => {
     const file = input.files[0];
     if (!file) return;
+
+    if (file.size > TAMANO_MAXIMO_MB * 1024 * 1024) {
+      mostrarError(`La imagen pesa demasiado (máx. ${TAMANO_MAXIMO_MB}MB). Sube una foto más liviana.`);
+      input.value = '';
+      return;
+    }
+
     estado[estadoKey] = file;
 
     const url = URL.createObjectURL(file);
@@ -818,7 +834,10 @@ function cargarImagen(file) {
 
 /* ════════════════════════════════════════════════════════════
    PASO 2: Redimensionar imagen a 1024×1024 en el canvas
-            Retorna un Blob PNG
+            Retorna un Blob JPEG (calidad 0.85). El tamaño de
+            archivo final queda en unos cientos de KB sin afectar
+            la calidad de la imagen que recibe la IA, ya que de
+            todas formas se reduce a 1024×1024.
    ════════════════════════════════════════════════════════════ */
 
 function redimensionarImagen(img) {
@@ -837,7 +856,7 @@ function redimensionarImagen(img) {
     const y = (1024 - h) / 2;
 
     ctx.drawImage(img, x, y, w, h);
-    canvas.toBlob(resolve, 'image/png');
+    canvas.toBlob(resolve, 'image/jpeg', 0.85);
   });
 }
 
@@ -896,8 +915,25 @@ function generarMascara(img) {
       const lm = results.poseLandmarks;
       if (!lm || lm.length === 0) {
         reject(new Error(
-          'MediaPipe no detectó una persona en la foto. ' +
-          'Intenta con una foto donde el cuerpo sea claramente visible.'
+          'No se detectó una persona en la foto. ' +
+          'Sube una foto de una sola persona, de frente, con el torso visible.'
+        ));
+        return;
+      }
+
+      // ── Validación general: nariz, hombros y caderas deben tener
+      // confianza razonable para considerar que hay una persona clara
+      // y bien encuadrada (no parcial, no de espaldas, no muy lejana). */
+      const landmarksClave = [0, 11, 12, 23, 24]
+        .map(i => lm[i])
+        .filter(Boolean);
+      const confianzaProm = landmarksClave.reduce((sum, l) => sum + (l.visibility || 0), 0)
+        / landmarksClave.length;
+      if (confianzaProm < 0.5) {
+        reject(new Error(
+          'No se pudo identificar claramente a una persona en la foto. ' +
+          'Sube una foto de una sola persona, de frente, con el torso y rostro visibles, ' +
+          'sin cubrir el cuerpo con manos, cabello u otros objetos.'
         ));
         return;
       }
@@ -1066,8 +1102,8 @@ const PROMPT_OCULTO =
 
 async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob, calidad) {
   const form = new FormData();
-  form.append('image[]', new File([imagenBlob], 'persona.png', { type: 'image/png' }));
-  form.append('image[]', new File([poleraBlob], 'polera.png',  { type: 'image/png' }));
+  form.append('image[]', new File([imagenBlob], 'persona.jpg', { type: 'image/jpeg' }));
+  form.append('image[]', new File([poleraBlob], 'polera.jpg',  { type: 'image/jpeg' }));
   form.append('mask',    new File([mascaraBlob], 'mascara.png', { type: 'image/png' }));
   form.append('prompt',  PROMPT_OCULTO);
   form.append('model',   'gpt-image-1');
