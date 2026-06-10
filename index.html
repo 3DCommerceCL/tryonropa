@@ -441,6 +441,29 @@ function ocultarLoader() {
   loader.classList.remove('visible');
 }
 
+/* ── Mensajes rotativos durante la espera de la IA ──
+   Le dan vida a la pantalla de carga, que en gpt-image-1 con
+   quality "high" puede tardar 20-40 segundos. */
+const MENSAJES_CARGA_IA = [
+  'Generando tu try-on…',
+  'Haciendo nuestra magia ✨',
+  'Cosiendo la nueva polera…',
+  'Calentando las agujas digitales 🧵',
+  'Combinando diseño y estilo…',
+  'Casi listo, un poco más de paciencia…',
+  'La IA está midiendo bien la talla…',
+  'Aplicando los últimos retoques…',
+];
+
+function iniciarMensajesRotativos(intervaloMs = 2500) {
+  let i = 0;
+  loaderTexto.textContent = MENSAJES_CARGA_IA[0];
+  return setInterval(() => {
+    i = (i + 1) % MENSAJES_CARGA_IA.length;
+    loaderTexto.textContent = MENSAJES_CARGA_IA[i];
+  }, intervaloMs);
+}
+
 function mostrarError(texto) {
   ocultarLoader();
   mensaje.className = 'message error';
@@ -722,7 +745,7 @@ async function llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob) {
   form.append('model',   'gpt-image-1');
   form.append('size',    '1024x1024');
   form.append('n',       '1');
-  form.append('quality', 'high');
+  form.append('quality', 'medium');
   // input_fidelity 'high' preserva mejor el rostro de la persona y los
   // detalles del diseño de la polera de referencia (menos "reinterpretación")
   form.append('input_fidelity', 'high');
@@ -781,6 +804,8 @@ btnGenerar.addEventListener('click', async () => {
   btnGenerar.disabled = true;
   seccionRes.classList.remove('visible');
 
+  let intervaloMensajes = null;
+
   try {
     // 1. Cargar imagen de la persona
     mostrarLoader('Cargando imagen…');
@@ -815,8 +840,11 @@ btnGenerar.addEventListener('click', async () => {
     const poleraBlob = await redimensionarImagen(imgPolera);
 
     // 5. Llamar a la API de OpenAI
-    mostrarLoader('Generando imagen con IA…');
+    mostrarLoader(MENSAJES_CARGA_IA[0]);
+    intervaloMensajes = iniciarMensajesRotativos();
     const resultadoDataUrl = await llamarOpenAI(apiKey, imagenBlob, mascaraBlob, poleraBlob);
+    clearInterval(intervaloMensajes);
+    intervaloMensajes = null;
 
     // 6. Mostrar resultados
     ocultarLoader();
@@ -832,6 +860,7 @@ btnGenerar.addEventListener('click', async () => {
     console.error('[TryOn Error]', err.message);
     mostrarError(err.message || 'Ocurrió un error inesperado.');
   } finally {
+    if (intervaloMensajes) clearInterval(intervaloMensajes);
     estado.procesando = false;
     validarFormulario();
   }
