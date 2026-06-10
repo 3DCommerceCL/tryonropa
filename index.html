@@ -667,7 +667,6 @@ function actualizarContadorPro() {
     tryonProRadio.disabled = true;
     if (tryonProRadio.checked) {
       tryonNormalRadio.checked = true;
-      tryonNormalRadio.checked = true;
     }
   } else {
     opcionPro.classList.remove('deshabilitada');
@@ -851,7 +850,7 @@ function redimensionarImagen(img) {
 
    La máscara se construye como un polígono suave que une los
    4 landmarks del torso: hombros (11,12) y caderas (23,24).
-   BLANCO = zona a editar (torso), NEGRO = mantener.
+   TRANSPARENTE = zona a editar (torso), OPACO = mantener.
    ════════════════════════════════════════════════════════════ */
 
 function generarMascara(img) {
