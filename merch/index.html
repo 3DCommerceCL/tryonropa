@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generador de Merchandising</title>
+
+  <style>
+    /* ── Reset y variables ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --accent: #0071e3;
+      --accent-hover: #0058b0;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --border: #d2d2d7;
+      --error: #ff3b30;
+      --success: #34c759;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    /* ── Contenedor principal ── */
+    .container {
+      width: 100%;
+      max-width: 700px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── Encabezado ── */
+    header { text-align: center; }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    /* ── Tarjeta genérica ── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Campos de formulario ── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field label {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .field input[type="password"],
+    .field input[type="text"] {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+      background: #fafafa;
+      color: var(--text);
+      font-family: inherit;
+    }
+    .field input:focus {
+      border-color: var(--accent);
+      background: #fff;
+    }
+
+    /* ── Upload de imagen ── */
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+    .upload-area:hover {
+      border-color: var(--accent);
+      background: #f0f7ff;
+    }
+    .upload-area input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-area .icon { font-size: 2rem; }
+    .upload-area .label {
+      margin-top: 6px;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .upload-area .label strong { color: var(--accent); }
+    .upload-preview {
+      margin-top: 10px;
+      display: none;
+    }
+    .upload-preview img {
+      max-height: 200px;
+      max-width: 100%;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+
+    /* ── Dos columnas para las dos imágenes ── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* ── Botón principal ── */
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+
+    /* ── Selector de producto ── */
+    .producto-opciones {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .producto-opcion {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .producto-opcion:has(input:checked) {
+      border-color: var(--accent);
+      background: #f0f7ff;
+    }
+    .producto-opcion input[type="radio"] { width: auto; }
+    .producto-opcion .icon { font-size: 1.4rem; }
+    .producto-opcion strong { font-size: 0.95rem; }
+
+    /* ── Estado de carga ── */
+    .loader {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 0;
+    }
+    .loader.visible { display: flex; }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-size: 0.9rem; color: var(--muted); }
+
+    /* ── Mensajes de error/éxito ── */
+    .message {
+      display: none;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .message.error {
+      background: #fff2f1;
+      color: var(--error);
+      border: 1px solid #ffd4d1;
+      display: block;
+    }
+    .message.success {
+      background: #f0fff4;
+      color: var(--success);
+      border: 1px solid #b7f0c8;
+      display: block;
+    }
+
+    /* ── Resultados ── */
+    .results { display: none; }
+    .results.visible { display: block; }
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .result-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    .result-item .result-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .result-item img {
+      width: 100%;
+      border-radius: 10px;
+      object-fit: contain;
+      box-shadow: var(--shadow);
+    }
+
+    /* ── Canvas oculto para procesamiento ── */
+    #canvasOculto { display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 500px) {
+      .two-col { grid-template-columns: 1fr; }
+      .result-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ── Encabezado ── -->
+  <header>
+    <h1>🎁 Generador de Merchandising</h1>
+    <p>Aplica tu logo o diseño sobre distintos productos</p>
+  </header>
+
+  <!-- ── Sección 1: API Key ── -->
+  <div class="card">
+    <h2>Configuración</h2>
+    <div class="field">
+      <label for="apiKey">OpenAI API Key</label>
+      <input
+        type="password"
+        id="apiKey"
+        placeholder="sk-..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span style="font-size:0.78rem;color:var(--muted);">
+        Tu clave se usa solo en este navegador y nunca se envía a ningún servidor propio.
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Sección 2: Producto ── -->
+  <div class="card">
+    <h2>Producto</h2>
+    <div class="producto-opciones" id="productoOpciones">
+      <label class="producto-opcion">
+        <input type="radio" name="tipoProducto" value="taza" checked />
+        <span class="icon">☕</span>
+        <strong>Taza</strong>
+      </label>
+      <label class="producto-opcion">
+        <input type="radio" name="tipoProducto" value="polera" />
+        <span class="icon">👕</span>
+        <strong>Polera</strong>
+      </label>
+      <label class="producto-opcion">
+        <input type="radio" name="tipoProducto" value="jockey" />
+        <span class="icon">🧢</span>
+        <strong>Jockey</strong>
+      </label>
+      <label class="producto-opcion">
+        <input type="radio" name="tipoProducto" value="lapiz" />
+        <span class="icon">✏️</span>
+        <strong>Lápiz</strong>
+      </label>
+      <label class="producto-opcion">
+        <input type="radio" name="tipoProducto" value="agenda" />
+        <span class="icon">📓</span>
+        <strong>Agenda</strong>
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Sección 3: Imágenes ── -->
+  <div class="card">
+    <h2>Imágenes</h2>
+    <div class="two-col">
+
+      <!-- Foto del producto -->
+      <div class="field">
+        <label id="labelImagenProducto">Foto de la taza</label>
+        <div class="upload-area" id="areaProducto">
+          <input type="file" id="inputProducto" accept="image/jpeg,image/png" />
+          <div class="icon">📦</div>
+          <div class="label">Haz clic o arrastra<br/><strong>JPG / PNG</strong></div>
+        </div>
+        <div class="upload-preview" id="prevProducto">
+          <img id="imgProducto" alt="Vista previa producto" />
+        </div>
+      </div>
+
+      <!-- Logo o diseño -->
+      <div class="field">
+        <label>Logo o diseño</label>
+        <div class="upload-area" id="areaLogo">
+          <input type="file" id="inputLogo" accept="image/jpeg,image/png" />
+          <div class="icon">🖼️</div>
+          <div class="label">Haz clic o arrastra<br/><strong>JPG / PNG</strong></div>
+        </div>
+        <div class="upload-preview" id="prevLogo">
+          <img id="imgLogo" alt="Vista previa logo" />
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Botón Generar ── -->
+  <button class="btn-primary" id="btnGenerar" disabled>
+    <span>✨ Generar Merchandising</span>
+  </button>
+
+  <!-- ── Estado de carga ── -->
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <div class="loader-text" id="loaderTexto">Iniciando…</div>
+  </div>
+
+  <!-- ── Mensajes ── -->
+  <div class="message" id="mensaje"></div>
+
+  <!-- ── Resultados ── -->
+  <div class="card results" id="seccionResultados">
+    <h2>Resultado</h2>
+    <div class="result-grid">
+      <div class="result-item">
+        <span class="result-label">Producto original</span>
+        <img id="resultOriginal" alt="Producto original" />
+      </div>
+      <div class="result-item">
+        <span class="result-label">Con tu diseño</span>
+        <img id="resultGenerado" alt="Producto con diseño aplicado" />
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Canvas oculto para procesamiento de imágenes -->
+<canvas id="canvasOculto"></canvas>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   PROMPTS OCULTOS POR TIPO DE PRODUCTO
+   ─────────────────────────────────────────────────────────
+   Cada producto tiene su propia etiqueta para la imagen 1 y su
+   propio prompt oculto. La imagen 1 es el producto, la imagen 2
+   es el logo/diseño a aplicar. Para agregar un nuevo producto
+   solo hay que sumar una entrada acá y un radio button en el HTML.
+   ════════════════════════════════════════════════════════════ */
+const PRODUCTOS = {
+  taza: {
+    labelImagen: 'Foto de la taza',
+    prompt:
+      'You are given two images. The first image shows a ceramic mug. The ' +
+      'second image shows a logo or graphic design. Apply the design from ' +
+      'the second image onto the visible front surface of the mug in the ' +
+      'first image, wrapped naturally around its curved surface as if ' +
+      'printed or engraved on the ceramic, reproduced as accurately and ' +
+      'sharply as possible. Keep the mug\'s shape, color, material, handle, ' +
+      'background, lighting, shadows and reflections exactly as in the ' +
+      'first image. Do not add any text other than what appears in the ' +
+      'second image\'s design.',
+  },
+  polera: {
+    labelImagen: 'Foto de la polera',
+    prompt:
+      'You are given two images. The first image shows a t-shirt. The ' +
+      'second image shows a logo or graphic design. Apply the design from ' +
+      'the second image onto the chest area of the t-shirt in the first ' +
+      'image, reproduced as accurately and sharply as possible, fitted ' +
+      'naturally to the fabric\'s folds, perspective and lighting. Keep the ' +
+      'shirt\'s color, shape, background, lighting and shadows exactly as in ' +
+      'the first image. Do not add any text other than what appears in the ' +
+      'second image\'s design.',
+  },
+  jockey: {
+    labelImagen: 'Foto del jockey',
+    prompt:
+      'You are given two images. The first image shows a baseball cap. The ' +
+      'second image shows a logo or graphic design. Apply the design from ' +
+      'the second image onto the front panel of the cap in the first image, ' +
+      'fitted naturally to its curved surface and fabric texture, ' +
+      'reproduced as accurately and sharply as possible. Keep the cap\'s ' +
+      'shape, color, material, background, lighting and shadows exactly as ' +
+      'in the first image. Do not add any text other than what appears in ' +
+      'the second image\'s design.',
+  },
+  lapiz: {
+    labelImagen: 'Foto del lápiz',
+    prompt:
+      'You are given two images. The first image shows a pencil or pen. The ' +
+      'second image shows a logo or graphic design. Apply the design from ' +
+      'the second image onto the visible barrel of the pencil/pen in the ' +
+      'first image, wrapped naturally along its cylindrical surface, ' +
+      'reproduced as accurately and sharply as possible. Keep the item\'s ' +
+      'shape, color, material, background, lighting and shadows exactly as ' +
+      'in the first image. Do not add any text other than what appears in ' +
+      'the second image\'s design.',
+  },
+  agenda: {
+    labelImagen: 'Foto de la agenda',
+    prompt:
+      'You are given two images. The first image shows a notebook or ' +
+      'planner. The second image shows a logo or graphic design. Apply the ' +
+      'design from the second image onto the front cover of the notebook in ' +
+      'the first image, fitted naturally to the cover\'s surface, ' +
+      'perspective and lighting, reproduced as accurately and sharply as ' +
+      'possible. Keep the notebook\'s shape, size, color, material, ' +
+      'background, lighting and shadows exactly as in the first image. Do ' +
+      'not add any text other than what appears in the second image\'s ' +
+      'design.',
+  },
+};
+
+/* ════════════════════════════════════════════════════════════
+   ESTADO GLOBAL
+   ════════════════════════════════════════════════════════════ */
+const estado = {
+  fotoProducto: null,
+  fotoLogo: null,
+  procesando: false,
+};
+
+/* ════════════════════════════════════════════════════════════
+   REFERENCIAS AL DOM
+   ════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const apiKeyInput   = $('apiKey');
+const inputProducto = $('inputProducto');
+const inputLogo     = $('inputLogo');
+const labelImagenProducto = $('labelImagenProducto');
+const btnGenerar    = $('btnGenerar');
+const loader        = $('loader');
+const loaderTexto   = $('loaderTexto');
+const mensaje       = $('mensaje');
+const seccionRes    = $('seccionResultados');
+const resultOrig    = $('resultOriginal');
+const resultGen     = $('resultGenerado');
+const canvas        = $('canvasOculto');
+const ctx           = canvas.getContext('2d');
+
+/* ════════════════════════════════════════════════════════════
+   SELECTOR DE PRODUCTO
+   ════════════════════════════════════════════════════════════ */
+function productoSeleccionado() {
+  return document.querySelector('input[name="tipoProducto"]:checked').value;
+}
+
+document.querySelectorAll('input[name="tipoProducto"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    labelImagenProducto.textContent = PRODUCTOS[productoSeleccionado()].labelImagen;
+  });
+});
+
+/* ════════════════════════════════════════════════════════════
+   MANEJO DE UPLOADS
+   ════════════════════════════════════════════════════════════ */
+
+// Tamaño máximo de archivo aceptado en la subida (la imagen se
+// redimensiona y comprime después, así que esto solo evita casos
+// extremos que tarden mucho en decodificar en el navegador).
+const TAMANO_MAXIMO_MB = 20;
+
+function manejarUpload(input, previewContainer, previewImg, estadoKey) {
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+
+    if (file.size > TAMANO_MAXIMO_MB * 1024 * 1024) {
+      mostrarError(`La imagen pesa demasiado (máx. ${TAMANO_MAXIMO_MB}MB). Sube una foto más liviana.`);
+      input.value = '';
+      return;
+    }
+
+    estado[estadoKey] = file;
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewContainer.style.display = 'block';
+    validarFormulario();
+  });
+}
+
+manejarUpload(inputProducto, $('prevProducto'), $('imgProducto'), 'fotoProducto');
+manejarUpload(inputLogo,     $('prevLogo'),     $('imgLogo'),     'fotoLogo');
+
+function validarFormulario() {
+  const listo = estado.fotoProducto && estado.fotoLogo && !estado.procesando;
+  btnGenerar.disabled = !listo;
+}
+
+/* ════════════════════════════════════════════════════════════
+   UTILIDADES UI
+   ════════════════════════════════════════════════════════════ */
+
+function mostrarLoader(texto) {
+  loader.classList.add('visible');
+  loaderTexto.textContent = texto;
+  mensaje.className = 'message';
+  mensaje.textContent = '';
+}
+
+function ocultarLoader() {
+  loader.classList.remove('visible');
+}
+
+function mostrarError(texto) {
+  ocultarLoader();
+  mensaje.className = 'message error';
+  mensaje.textContent = texto;
+}
+
+function mostrarExito(texto) {
+  mensaje.className = 'message success';
+  mensaje.textContent = texto;
+}
+
+/* ── Mensajes rotativos durante la espera ── */
+const MENSAJES_CARGA = [
+  'Preparando tu producto…',
+  'Aplicando el diseño…',
+  'Ajustando el logo a la superficie…',
+  'Combinando diseño y producto…',
+  'Casi listo, un poco más de paciencia…',
+  'Aplicando los últimos retoques…',
+];
+
+function iniciarMensajesRotativos(intervaloMs = 5000) {
+  let i = 0;
+  loaderTexto.textContent = MENSAJES_CARGA[0];
+  return setInterval(() => {
+    i = (i + 1) % MENSAJES_CARGA.length;
+    loaderTexto.textContent = MENSAJES_CARGA[i];
+  }, intervaloMs);
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 1: Cargar imagen en un HTMLImageElement
+   ════════════════════════════════════════════════════════════ */
+
+function cargarImagen(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 2: Redimensionar imagen a 1024×1024 en el canvas
+            Retorna un Blob JPEG (calidad 0.85).
+   ════════════════════════════════════════════════════════════ */
+
+function redimensionarImagen(img) {
+  return new Promise(resolve => {
+    canvas.width  = 1024;
+    canvas.height = 1024;
+    // Relleno blanco de fondo para mantener proporción sin distorsión
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    const escala = Math.min(1024 / img.naturalWidth, 1024 / img.naturalHeight);
+    const w = img.naturalWidth  * escala;
+    const h = img.naturalHeight * escala;
+    const x = (1024 - w) / 2;
+    const y = (1024 - h) / 2;
+
+    ctx.drawImage(img, x, y, w, h);
+    canvas.toBlob(resolve, 'image/jpeg', 0.85);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PASO 3: Llamar a OpenAI images/edits (sin máscara)
+   ─────────────────────────────────────────────────────────
+   gpt-image-1 acepta MÚLTIPLES imágenes de entrada (image[]):
+   la primera es el producto y la segunda es el logo/diseño.
+   Sin máscara, el modelo decide dónde y cómo aplicar el diseño
+   según el prompt oculto de cada producto.
+   ════════════════════════════════════════════════════════════ */
+
+async function llamarOpenAI(apiKey, productoBlob, logoBlob, prompt) {
+  const form = new FormData();
+  form.append('image[]', new File([productoBlob], 'producto.jpg', { type: 'image/jpeg' }));
+  form.append('image[]', new File([logoBlob], 'logo.jpg', { type: 'image/jpeg' }));
+  form.append('prompt',  prompt);
+  form.append('model',   'gpt-image-1');
+  form.append('size',    '1024x1024');
+  form.append('n',       '1');
+  form.append('quality', 'high');
+  form.append('input_fidelity', 'high');
+
+  const respuesta = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: form,
+  });
+
+  if (!respuesta.ok) {
+    let detalles = '';
+    try {
+      const json = await respuesta.json();
+      detalles = json?.error?.message || JSON.stringify(json);
+    } catch (_) {
+      detalles = await respuesta.text();
+    }
+    throw new Error(`OpenAI API error (${respuesta.status}): ${detalles}`);
+  }
+
+  const data = await respuesta.json();
+  return `data:image/png;base64,${data.data[0].b64_json}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   FLUJO PRINCIPAL al hacer clic en "Generar"
+   ════════════════════════════════════════════════════════════ */
+
+btnGenerar.addEventListener('click', async () => {
+  const apiKey = apiKeyInput.value.trim();
+  if (!apiKey) {
+    mostrarError('Ingresa tu OpenAI API Key antes de continuar.');
+    return;
+  }
+  if (!apiKey.startsWith('sk-')) {
+    mostrarError('La API Key parece incorrecta (debe comenzar con "sk-").');
+    return;
+  }
+  if (!estado.fotoProducto || !estado.fotoLogo) {
+    mostrarError('Sube ambas imágenes primero.');
+    return;
+  }
+
+  estado.procesando = true;
+  btnGenerar.disabled = true;
+  seccionRes.classList.remove('visible');
+
+  let intervaloMensajes = null;
+
+  try {
+    mostrarLoader('Cargando imágenes…');
+    const imgProducto = await cargarImagen(estado.fotoProducto);
+    const imgLogo     = await cargarImagen(estado.fotoLogo);
+
+    mostrarLoader('Redimensionando imágenes a 1024×1024…');
+    const productoBlob = await redimensionarImagen(imgProducto);
+    const logoBlob     = await redimensionarImagen(imgLogo);
+
+    const producto = PRODUCTOS[productoSeleccionado()];
+
+    mostrarLoader(MENSAJES_CARGA[0]);
+    intervaloMensajes = iniciarMensajesRotativos();
+    const resultadoDataUrl = await llamarOpenAI(apiKey, productoBlob, logoBlob, producto.prompt);
+    clearInterval(intervaloMensajes);
+    intervaloMensajes = null;
+
+    ocultarLoader();
+    resultOrig.src = URL.createObjectURL(productoBlob);
+    resultGen.src  = resultadoDataUrl;
+    seccionRes.classList.add('visible');
+    mostrarExito('¡Listo! Tu merchandising fue generado correctamente.');
+
+  } catch (err) {
+    console.error('[Merch Error]', err.message);
+    mostrarError(err.message || 'Ocurrió un error inesperado.');
+  } finally {
+    if (intervaloMensajes) clearInterval(intervaloMensajes);
+    estado.procesando = false;
+    validarFormulario();
+  }
+});
+</script>
+
+</body>
+</html>
